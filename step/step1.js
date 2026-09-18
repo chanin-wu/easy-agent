@@ -79,11 +79,16 @@ export async function* streamMessage({ messages, model = DEFAULT_MODEL, system, 
             name: event.content_block.name,
           };
         }
+
+        // 注意: DashScope 的 Qwen3 系列默认带思考模式, 流里会有 thinking 块。
+        // 教学版不记录它(content[event.index] 不会被赋值), 数组会留"洞",
+        // 返回前必须过滤(见文件末尾的 filter(Boolean))。
         break;
       }
 
       case "content_block_delta": {
-        if (event.delta.type === "text_delta") {
+        if (event.delta.type === "text_delta" && content[event.index]) {
+          // thinking 等未记录的块会留空洞, 这里加守卫防止 undefined。
           content[event.index].text += event.delta.text;
           yield { type: "text", text: event.delta.text };
         }
@@ -119,8 +124,9 @@ export async function* streamMessage({ messages, model = DEFAULT_MODEL, system, 
     }
   }
 
+  // filter(Boolean) 去掉 thinking 等未记录块留下的"空洞", 保证 messages 里没有 undefined。
   return {
-    assistantMessage: { role: "assistant", content },
+    assistantMessage: { role: "assistant", content: content.filter(Boolean) },
     usage,
     stopReason,
   };
